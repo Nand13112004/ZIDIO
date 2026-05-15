@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: oklch(0.6 0.2 260);
+  --color-secondary: oklch(0.7 0.15 190);
+  --color-accent: oklch(0.65 0.25 340);
+  --color-background: oklch(0.15 0.02 260);
+  --color-foreground: oklch(0.98 0.01 260);
+  --color-card: oklch(0.2 0.03 260 / 0.8);
+  
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  
+  body {
+    background: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    margin: 0;
+    min-height: 100vh;
+    background-image: 
+      radial-gradient(circle at 0% 0%, oklch(0.4 0.15 260 / 0.15) 0%, transparent 50%),
+      radial-gradient(circle at 100% 100%, oklch(0.5 0.2 340 / 0.1) 0%, transparent 50%);
+    background-attachment: fixed;
+  }
+}
+
+@layer components {
+  .glass-card {
+    background: var(--color-card);
+    backdrop-filter: blur(12px);
+    border: 1px solid oklch(1 0 0 / 0.1);
+    border-radius: 1rem;
+    box-shadow: 0 8px 32px 0 oklch(0 0 0 / 0.3);
+  }
+
+  .premium-gradient-text {
+    background: linear-gradient(to right, var(--color-primary), var(--color-accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: 800;
+  }
+}
