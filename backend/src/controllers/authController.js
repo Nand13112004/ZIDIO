@@ -173,7 +173,7 @@ exports.login = asyncHandler(async (req, res) => {
 // ────────────────────────────────────────────────────────
 
 exports.refreshToken = asyncHandler(async (req, res) => {
-  const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
+  const refreshToken = req.cookies?.refreshToken || req.body.refreshToken;
 
   if (!refreshToken) {
     const error = new Error('No refresh token provided');

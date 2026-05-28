@@ -339,6 +339,8 @@ socket.emit('webrtc:ice-candidate', { to, candidate })
 
 ## 🚀 Build & Deployment
 
+For a detailed step-by-step guide to deploying the frontend on **Vercel** and the backend on **Render**, please refer to the [Deployment Guide (DEPLOYMENT.md)](./DEPLOYMENT.md).
+
 ### Build Frontend
 ```bash
 cd frontend
