@@ -8,6 +8,11 @@ const morgan = require('morgan');
 const path = require('path');
 const fs = require('fs');
 
+// Sanitize CLIENT_URL: trim spaces and remove any trailing slashes
+const clientUrl = process.env.CLIENT_URL
+  ? process.env.CLIENT_URL.trim().replace(/\/+$/, '')
+  : 'http://localhost:5173';
+
 const connectDB = require('./src/config/db');
 const logger = require('./src/utils/logger');
 const { errorHandler, notFound } = require('./src/middleware/errorHandler');
@@ -37,7 +42,7 @@ const httpServer = http.createServer(app);
 // ─── Socket.io Setup ─────────────────────────────────────────────
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: clientUrl,
     methods: ['GET', 'POST'],
     credentials: true,
   },
@@ -63,7 +68,7 @@ app.use(
 
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: clientUrl,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],

@@ -73,10 +73,9 @@ Vercel will host the static assets built from the Vite React frontend.
 
 > [!IMPORTANT]
 > **CORS Matching (Trailing Slash Issue)**
-> Ensure that the `CLIENT_URL` set on Render matches the Vercel URL *exactly* (including `https://` and without any trailing `/`). For example:
-> - **Correct**: `https://intellmeet-frontend.vercel.app`
-> - **Incorrect**: `https://intellmeet-frontend.vercel.app/`
-> An incorrect trailing slash will cause CORS preflight checks to fail on requests from your browser.
+> In the original configuration, setting a trailing slash in `CLIENT_URL` (e.g., `https://zidio-three.vercel.app/`) would cause preflight CORS requests from the browser (which send the origin *without* a trailing slash, i.e., `https://zidio-three.vercel.app`) to be rejected.
+> 
+> **We have updated `backend/server.js` to automatically sanitize the `CLIENT_URL` environment variable by stripping any trailing slashes.** To apply this fix to your production app, simply commit and push these backend changes to your repository so Render redeploys it. You do not need to change your environment variable setup.
 
 > [!TIP]
 > **Render Spin-Up Delay (Free Tier)**
