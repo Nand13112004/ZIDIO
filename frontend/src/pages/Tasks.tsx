@@ -7,21 +7,30 @@ import {
   Loader2,
   Plus,
   RefreshCw,
+  Target,
+  AlertTriangle,
 } from 'lucide-react';
 import { useEffect, useMemo, useState, type DragEvent, type FormEvent } from 'react';
-import { formatDate, getFullName, getPriorityColor } from '../lib/utils';
+import { formatDate, getFullName } from '../lib/utils';
 import { taskService, teamService } from '../services';
 import { socketService } from '../services/socket';
 import type { Task, Team } from '../types';
 
-const columns: Array<{ id: Task['status']; title: string; icon: typeof ClipboardCheck }> = [
-  { id: 'todo', title: 'To do', icon: ClipboardCheck },
-  { id: 'in-progress', title: 'In progress', icon: Clock3 },
-  { id: 'review', title: 'Review', icon: RefreshCw },
-  { id: 'done', title: 'Done', icon: CheckCircle2 },
+const columns: Array<{ id: Task['status']; title: string; icon: typeof ClipboardCheck; color: string }> = [
+  { id: 'todo',        title: 'To Do',       icon: ClipboardCheck, color: '#64748b' },
+  { id: 'in-progress', title: 'In Progress',  icon: Clock3,         color: '#2563EB' },
+  { id: 'review',      title: 'Review',       icon: RefreshCw,      color: '#d97706' },
+  { id: 'done',        title: 'Done',         icon: CheckCircle2,   color: '#16a34a' },
 ];
 
 const priorityOptions: Task['priority'][] = ['low', 'medium', 'high', 'urgent'];
+
+const colBg: Record<string, string> = {
+  'todo':        '#f8fafc',
+  'in-progress': '#eff6ff',
+  'review':      '#fffbeb',
+  'done':        '#f0fdf4',
+};
 
 export default function Tasks() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -36,44 +45,36 @@ export default function Tasks() {
     team: '',
     dueDate: '',
   });
+  const [dragOver, setDragOver] = useState<string | null>(null);
 
   const tasksByStatus = useMemo(
     () =>
       columns.reduce(
-        (accumulator, column) => ({
-          ...accumulator,
-          [column.id]: tasks.filter((task) => task.status === column.id),
-        }),
+        (acc, col) => ({ ...acc, [col.id]: tasks.filter((t) => t.status === col.id) }),
         {} as Record<Task['status'], Task[]>
       ),
     [tasks]
   );
 
-  const stats = useMemo(
-    () => ({
-      total: tasks.length,
-      done: tasks.filter((task) => task.status === 'done').length,
-      urgent: tasks.filter((task) => task.priority === 'urgent').length,
-      overdue: tasks.filter((task) => task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'done')
-        .length,
-    }),
-    [tasks]
-  );
+  const stats = useMemo(() => ({
+    total:  tasks.length,
+    done:   tasks.filter((t) => t.status === 'done').length,
+    urgent: tasks.filter((t) => t.priority === 'urgent').length,
+    overdue: tasks.filter((t) => t.dueDate && new Date(t.dueDate) < new Date() && t.status !== 'done').length,
+  }), [tasks]);
 
   const loadBoard = async () => {
     setIsLoading(true);
     setError('');
-
     try {
-      const [taskResponse, teamResponse] = await Promise.all([
+      const [taskRes, teamRes] = await Promise.all([
         taskService.getTasks({ limit: 100, sort: '-createdAt' }),
         teamService.getTeams(),
       ]);
-
-      setTasks(taskResponse.data.data.tasks);
-      setTeams(teamResponse.data.data.teams);
+      setTasks(taskRes.data.data.tasks);
+      setTeams(teamRes.data.data.teams);
     } catch {
-      setError('Unable to load the task board. Confirm the backend and MongoDB are running.');
+      setError('Unable to load tasks. Please check your backend connection.');
     } finally {
       setIsLoading(false);
     }
@@ -81,237 +82,240 @@ export default function Tasks() {
 
   useEffect(() => {
     void loadBoard();
-
     const handleTaskUpdated = (payload: { taskId: string; updates: Partial<Task> }) => {
-      setTasks((current) =>
-        current.map((task) => (task._id === payload.taskId ? { ...task, ...payload.updates } : task))
-      );
+      setTasks((cur) => cur.map((t) => (t._id === payload.taskId ? { ...t, ...payload.updates } : t)));
     };
-
     socketService.on('task:updated', handleTaskUpdated);
     return () => socketService.off('task:updated', handleTaskUpdated);
   }, []);
 
-  const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleCreateTask = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
     if (!form.title.trim()) return;
-
     setIsCreating(true);
     setError('');
-
     try {
-      const response = await taskService.createTask({
+      const res = await taskService.createTask({
         title: form.title.trim(),
         description: form.description.trim(),
         priority: form.priority,
         dueDate: form.dueDate || undefined,
         team: form.team || undefined,
       });
-
-      const createdTask = response.data.data.task;
-      setTasks((current) => [createdTask, ...current]);
+      const task = res.data.data.task;
+      setTasks((cur) => [task, ...cur]);
       setForm({ title: '', description: '', priority: 'medium', team: '', dueDate: '' });
-      socketService.emit('task:updated', { taskId: createdTask._id, updates: createdTask });
+      socketService.emit('task:updated', { taskId: task._id, updates: task });
     } catch {
-      setError('Task creation failed. Check required fields and permissions.');
+      setError('Task creation failed. Check required fields.');
     } finally {
       setIsCreating(false);
     }
   };
 
   const moveTask = async (taskId: string, status: Task['status']) => {
-    const previousTasks = tasks;
-    setTasks((current) => current.map((task) => (task._id === taskId ? { ...task, status } : task)));
-
+    const prev = tasks;
+    setTasks((cur) => cur.map((t) => (t._id === taskId ? { ...t, status } : t)));
     try {
       await taskService.updateTask(taskId, { status });
       socketService.emit('task:updated', { taskId, updates: { status } });
     } catch {
-      setTasks(previousTasks);
-      setError('Task move failed. You may need reporter or assignee permissions.');
+      setTasks(prev);
+      setError('Task move failed.');
     }
   };
 
   const completeTask = async (taskId: string) => {
-    const previousTasks = tasks;
-    setTasks((current) => current.map((task) => (task._id === taskId ? { ...task, status: 'done' } : task)));
-
+    const prev = tasks;
+    setTasks((cur) => cur.map((t) => (t._id === taskId ? { ...t, status: 'done' } : t)));
     try {
       await taskService.completeTask(taskId);
       socketService.emit('task:updated', { taskId, updates: { status: 'done' } });
     } catch {
-      setTasks(previousTasks);
-      setError('Unable to complete the task.');
+      setTasks(prev);
+      setError('Unable to complete task.');
     }
   };
 
-  const handleDragStart = (event: DragEvent<HTMLElement>, taskId: string) => {
-    event.dataTransfer.setData('text/plain', taskId);
-    event.dataTransfer.effectAllowed = 'move';
+  const handleDragStart = (e: DragEvent<HTMLElement>, taskId: string) => {
+    e.dataTransfer.setData('text/plain', taskId);
+    e.dataTransfer.effectAllowed = 'move';
   };
 
-  const handleDrop = (event: DragEvent<HTMLDivElement>, status: Task['status']) => {
-    event.preventDefault();
-    const taskId = event.dataTransfer.getData('text/plain');
-    if (taskId) {
-      void moveTask(taskId, status);
-    }
+  const handleDrop = (e: DragEvent<HTMLDivElement>, status: Task['status']) => {
+    e.preventDefault();
+    const taskId = e.dataTransfer.getData('text/plain');
+    if (taskId) void moveTask(taskId, status);
+    setDragOver(null);
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-center">
+    <div className="space-y-6 animate-fade-in">
+      {/* Header */}
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Tasks</h1>
-          <p className="mt-1 text-gray-600 dark:text-gray-400">
-            Kanban planning with real-time updates, priorities, due dates, and team context.
-          </p>
+          <h1 className="im-page-title">Task Board</h1>
+          <p className="im-page-subtitle">Kanban planning with real-time updates and AI-extracted action items.</p>
         </div>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <Metric label="Total" value={stats.total} />
-          <Metric label="Done" value={stats.done} />
-          <Metric label="Urgent" value={stats.urgent} />
-          <Metric label="Overdue" value={stats.overdue} />
+        <div className="flex gap-3 flex-wrap">
+          <StatChip icon={Target}       label="Total"   value={stats.total}  color="#2563EB" />
+          <StatChip icon={CheckCircle2} label="Done"    value={stats.done}   color="#16a34a" />
+          <StatChip icon={Flag}         label="Urgent"  value={stats.urgent} color="#dc2626" />
+          <StatChip icon={AlertTriangle}label="Overdue" value={stats.overdue} color="#d97706" />
         </div>
       </div>
 
+      {/* Error */}
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-900/20 dark:text-red-200">
-          {error}
+        <div className="im-alert im-alert-error animate-fade-in">
+          <AlertTriangle className="h-5 w-5 shrink-0" />
+          <span>{error}</span>
         </div>
       )}
 
-      <form
-        onSubmit={handleCreateTask}
-        className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900"
-      >
-        <div className="grid gap-4 xl:grid-cols-[minmax(220px,1.4fr)_minmax(180px,0.8fr)_160px_190px_auto]">
-          <label className="grid gap-2">
-            <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">Task</span>
+      {/* Create task form */}
+      <form onSubmit={handleCreateTask} className="im-card p-5">
+        <h2 className="text-sm font-bold text-[--color-foreground] mb-4 flex items-center gap-2">
+          <Plus className="h-4 w-4 text-[--color-primary]" />
+          Add New Task
+        </h2>
+        <div className="grid gap-4 xl:grid-cols-[1fr_180px_160px_190px_auto]">
+          <div>
+            <label className="block text-xs font-semibold text-[--color-text-secondary] mb-1.5">Task title *</label>
             <input
               value={form.title}
-              onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
-              placeholder="Create launch checklist"
-              className="rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+              onChange={(e) => setForm((c) => ({ ...c, title: e.target.value }))}
+              placeholder="e.g. Review AI meeting summary"
+              className="im-input"
+              id="task-title"
             />
-          </label>
-          <label className="grid gap-2">
-            <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">Team</span>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-[--color-text-secondary] mb-1.5">Team</label>
             <select
               value={form.team}
-              onChange={(event) => setForm((current) => ({ ...current, team: event.target.value }))}
-              className="rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+              onChange={(e) => setForm((c) => ({ ...c, team: e.target.value }))}
+              className="im-input"
+              id="task-team"
             >
               <option value="">No team</option>
-              {teams.map((team) => (
-                <option key={team._id} value={team._id}>
-                  {team.name}
-                </option>
-              ))}
+              {teams.map((t) => <option key={t._id} value={t._id}>{t.name}</option>)}
             </select>
-          </label>
-          <label className="grid gap-2">
-            <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">Priority</span>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-[--color-text-secondary] mb-1.5">Priority</label>
             <select
               value={form.priority}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, priority: event.target.value as Task['priority'] }))
-              }
-              className="rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+              onChange={(e) => setForm((c) => ({ ...c, priority: e.target.value as Task['priority'] }))}
+              className="im-input"
+              id="task-priority"
             >
-              {priorityOptions.map((priority) => (
-                <option key={priority} value={priority}>
-                  {priority}
-                </option>
-              ))}
+              {priorityOptions.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
-          </label>
-          <label className="grid gap-2">
-            <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">Due date</span>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-[--color-text-secondary] mb-1.5">Due date</label>
             <input
               type="date"
               value={form.dueDate}
-              onChange={(event) => setForm((current) => ({ ...current, dueDate: event.target.value }))}
-              className="rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+              onChange={(e) => setForm((c) => ({ ...c, dueDate: e.target.value }))}
+              className="im-input"
+              id="task-due"
             />
-          </label>
-          <button
-            type="submit"
-            disabled={isCreating || !form.title.trim()}
-            className="inline-flex items-center justify-center gap-2 self-end rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-white transition hover:bg-primary/90 disabled:opacity-60"
-          >
-            {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            Add task
-          </button>
+          </div>
+          <div className="flex items-end">
+            <button
+              type="submit"
+              disabled={isCreating || !form.title.trim()}
+              className="im-btn im-btn-primary h-10 px-5"
+              id="btn-add-task"
+            >
+              {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              Add
+            </button>
+          </div>
         </div>
-        <label className="mt-4 grid gap-2">
-          <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">Description</span>
+        <div className="mt-4">
+          <label className="block text-xs font-semibold text-[--color-text-secondary] mb-1.5">Description</label>
           <textarea
             value={form.description}
-            onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
+            onChange={(e) => setForm((c) => ({ ...c, description: e.target.value }))}
             rows={2}
-            placeholder="Add acceptance criteria, meeting context, or AI-generated action-item details"
-            className="rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+            placeholder="Add details, acceptance criteria, or AI-generated action-item context…"
+            className="im-input resize-none"
+            id="task-desc"
           />
-        </label>
+        </div>
       </form>
 
+      {/* Kanban board */}
       {isLoading ? (
-        <div className="flex min-h-80 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 dark:border-gray-800 dark:bg-gray-900">
-          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-          Loading task board
+        <div className="flex min-h-80 items-center justify-center gap-3 rounded-2xl border border-[--color-border] bg-white text-[--color-text-muted]">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          <span className="text-sm">Loading board…</span>
         </div>
       ) : (
         <div className="grid gap-4 xl:grid-cols-4">
-          {columns.map((column) => {
-            const Icon = column.icon;
+          {columns.map((col) => {
+            const Icon = col.icon;
+            const colTasks = tasksByStatus[col.id] ?? [];
             return (
               <div
-                key={column.id}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => handleDrop(event, column.id)}
-                className="min-h-[560px] rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950"
+                key={col.id}
+                id={`column-${col.id}`}
+                onDragOver={(e) => { e.preventDefault(); setDragOver(col.id); }}
+                onDragLeave={() => setDragOver(null)}
+                onDrop={(e) => handleDrop(e, col.id)}
+                className="rounded-2xl border border-[--color-border] transition-all"
+                style={{
+                  background: dragOver === col.id ? '#e0f2fe' : colBg[col.id] || '#f8fafc',
+                  minHeight: '560px',
+                }}
               >
-                <div className="mb-4 flex items-center justify-between">
+                {/* Column header */}
+                <div className="flex items-center justify-between px-4 py-3.5 border-b border-[--color-border]/60">
                   <div className="flex items-center gap-2">
-                    <Icon className="h-5 w-5 text-primary" />
-                    <h2 className="font-bold text-gray-900 dark:text-white">{column.title}</h2>
+                    <Icon className="h-4.5 w-4.5" style={{ color: col.color, width: '18px', height: '18px' }} />
+                    <h2 className="text-sm font-bold text-[--color-foreground]">{col.title}</h2>
                   </div>
-                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-gray-600 dark:bg-gray-900 dark:text-gray-300">
-                    {tasksByStatus[column.id].length}
+                  <span
+                    className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white"
+                    style={{ background: col.color }}
+                  >
+                    {colTasks.length}
                   </span>
                 </div>
 
-                <div className="space-y-3">
-                  {tasksByStatus[column.id].map((task) => (
+                {/* Tasks */}
+                <div className="p-3 space-y-3">
+                  {colTasks.map((task) => (
                     <article
                       key={task._id}
                       draggable
-                      onDragStart={(event) => handleDragStart(event, task._id)}
-                      className="cursor-grab rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md active:cursor-grabbing dark:border-gray-800 dark:bg-gray-900"
+                      onDragStart={(e) => handleDragStart(e, task._id)}
+                      id={`task-${task._id}`}
+                      className="rounded-xl border border-[--color-border] bg-white p-4 shadow-sm cursor-grab active:cursor-grabbing transition-all hover:-translate-y-0.5 hover:shadow-md"
                     >
-                      <div className="mb-3 flex items-start justify-between gap-3">
-                        <h3 className="font-semibold leading-snug text-gray-900 dark:text-white">{task.title}</h3>
-                        <Flag className={`h-4 w-4 shrink-0 ${getPriorityColor(task.priority)}`} />
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <h3 className="text-sm font-semibold text-[--color-foreground] leading-snug flex-1">{task.title}</h3>
+                        <PriorityDot priority={task.priority} />
                       </div>
                       {task.description && (
-                        <p className="line-clamp-3 text-sm leading-relaxed text-gray-600 dark:text-gray-400">
+                        <p className="text-xs text-[--color-text-muted] leading-relaxed line-clamp-2 mb-3">
                           {task.description}
                         </p>
                       )}
-                      <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
-                        <span className={`rounded-full bg-gray-100 px-2.5 py-1 font-semibold ${getPriorityColor(task.priority)} dark:bg-gray-800`}>
-                          {task.priority}
-                        </span>
+                      <div className="flex flex-wrap items-center gap-1.5 mb-3">
+                        <PriorityBadge priority={task.priority} />
                         {task.dueDate && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                            <CalendarClock className="h-3.5 w-3.5" />
+                          <span className="im-badge im-badge-gray text-[11px]">
+                            <CalendarClock className="h-3 w-3" />
                             {formatDate(task.dueDate)}
                           </span>
                         )}
                       </div>
-                      <div className="mt-4 flex items-center justify-between gap-3 border-t border-gray-100 pt-3 dark:border-gray-800">
-                        <p className="text-xs text-gray-500">
+                      <div className="flex items-center justify-between border-t border-[--color-border] pt-2.5">
+                        <p className="text-[11px] text-[--color-text-muted] font-medium">
                           {task.assignee
                             ? getFullName(task.assignee.firstName, task.assignee.lastName)
                             : 'Unassigned'}
@@ -320,14 +324,21 @@ export default function Tasks() {
                           <button
                             type="button"
                             onClick={() => void completeTask(task._id)}
-                            className="text-xs font-semibold text-primary hover:underline"
+                            className="text-[11px] font-bold text-[--color-primary] hover:underline"
                           >
-                            Complete
+                            Complete ✓
                           </button>
                         )}
                       </div>
                     </article>
                   ))}
+
+                  {colTasks.length === 0 && (
+                    <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-[--color-border] p-8 text-center opacity-50">
+                      <Icon className="h-8 w-8 text-[--color-text-muted] mb-2" />
+                      <p className="text-xs text-[--color-text-muted]">Drop tasks here</p>
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -338,11 +349,35 @@ export default function Tasks() {
   );
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
+function StatChip({ icon: Icon, label, value, color }: { icon: any; label: string; value: number; color: string }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
-      <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
-      <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
+    <div className="flex items-center gap-2 rounded-xl border border-[--color-border] bg-white px-4 py-2.5 shadow-xs">
+      <Icon className="h-4 w-4" style={{ color }} />
+      <div>
+        <p className="text-xs text-[--color-text-muted] font-medium">{label}</p>
+        <p className="text-lg font-bold text-[--color-foreground] leading-tight">{value}</p>
+      </div>
     </div>
   );
+}
+
+function PriorityDot({ priority }: { priority: Task['priority'] }) {
+  const colors: Record<string, string> = {
+    low: '#94a3b8', medium: '#f59e0b', high: '#f97316', urgent: '#ef4444',
+  };
+  return (
+    <span
+      className="h-2.5 w-2.5 rounded-full shrink-0 mt-0.5"
+      style={{ background: colors[priority] ?? '#94a3b8' }}
+      title={priority}
+    />
+  );
+}
+
+function PriorityBadge({ priority }: { priority: Task['priority'] }) {
+  const map: Record<string, string> = {
+    low: 'im-badge im-badge-gray', medium: 'im-badge im-badge-yellow',
+    high: 'im-badge', urgent: 'im-badge im-badge-red',
+  };
+  return <span className={map[priority] ?? 'im-badge im-badge-gray'} style={priority === 'high' ? { background: '#fff7ed', color: '#c2410c', borderColor: '#fed7aa' } : {}}>{priority}</span>;
 }

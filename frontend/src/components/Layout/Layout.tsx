@@ -8,18 +8,14 @@ interface LayoutProps {
 
 export default function Layout({ children }: LayoutProps) {
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-gray-950">
-      {/* Sidebar */}
+    <div className="flex h-screen bg-[--color-background] text-[--color-foreground] overflow-hidden">
       <Sidebar />
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header />
 
-        {/* Content */}
-        <main className="flex-1 overflow-auto">
-          <div className="max-w-7xl mx-auto p-6">
+        <main className="flex-1 overflow-auto scrollbar-thin">
+          <div className="mx-auto w-full max-w-[1520px] px-4 py-6 sm:px-6 lg:px-8 animate-fade-in">
             {children}
           </div>
         </main>

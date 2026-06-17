@@ -87,6 +87,16 @@ const teamSchema = new mongoose.Schema(
         default: 0,
       },
     },
+    // Stores pending email invites with one-time tokens
+    pendingInvites: [
+      {
+        email: { type: String, required: true, lowercase: true, trim: true },
+        token: { type: String, required: true },
+        role: { type: String, enum: ['admin', 'moderator', 'member'], default: 'member' },
+        invitedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        expiresAt: { type: Date, required: true },
+      },
+    ],
   },
   {
     timestamps: true,

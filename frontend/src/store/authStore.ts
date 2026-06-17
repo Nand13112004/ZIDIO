@@ -11,6 +11,10 @@ interface User {
   role: string;
   teams: any[];
   status: string;
+  department?: string;
+  jobTitle?: string;
+  phoneNumber?: string;
+  bio?: string;
 }
 
 interface AuthStore {
@@ -22,6 +26,7 @@ interface AuthStore {
   register: (data: any) => Promise<void>;
   logout: () => Promise<void>;
   getCurrentUser: () => Promise<void>;
+  hydrateSession: (accessToken: string, refreshToken?: string) => Promise<void>;
   clearError: () => void;
 }
 
@@ -35,9 +40,12 @@ export const useAuthStore = create<AuthStore>((set) => ({
     try {
       set({ isLoading: true, error: null });
       const response = await authService.login(email, password);
-      const { user, accessToken } = response.data.data;
+      const { user, accessToken, refreshToken } = response.data.data;
 
       localStorage.setItem('accessToken', accessToken);
+      if (refreshToken) {
+        localStorage.setItem('refreshToken', refreshToken);
+      }
       set({ user, isAuthenticated: true });
 
       // Connect socket after login
@@ -56,9 +64,12 @@ export const useAuthStore = create<AuthStore>((set) => ({
     try {
       set({ isLoading: true, error: null });
       const response = await authService.register(data);
-      const { user, accessToken } = response.data.data;
+      const { user, accessToken, refreshToken } = response.data.data;
 
       localStorage.setItem('accessToken', accessToken);
+      if (refreshToken) {
+        localStorage.setItem('refreshToken', refreshToken);
+      }
       set({ user, isAuthenticated: true });
 
       socketService.connect(accessToken);
@@ -95,6 +106,30 @@ export const useAuthStore = create<AuthStore>((set) => ({
       set({ user, isAuthenticated: true });
     } catch {
       set({ isAuthenticated: false, user: null });
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  hydrateSession: async (accessToken: string, refreshToken?: string) => {
+    localStorage.setItem('accessToken', accessToken);
+    if (refreshToken) {
+      localStorage.setItem('refreshToken', refreshToken);
+    }
+
+    socketService.connect(accessToken);
+
+    try {
+      set({ isLoading: true, error: null });
+      const response = await authService.getCurrentUser();
+      const { user } = response.data.data;
+      set({ user, isAuthenticated: true });
+      socketService.setOnline(user._id);
+    } catch (error: any) {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      set({ isAuthenticated: false, user: null, error: error.response?.data?.message || 'OAuth login failed' });
+      throw error;
     } finally {
       set({ isLoading: false });
     }

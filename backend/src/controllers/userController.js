@@ -1,6 +1,13 @@
 const asyncHandler = require('../utils/asyncHandler');
 const User = require('../models/User');
 const logger = require('../utils/logger');
+const cloudinary = require('cloudinary').v2;
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 // ────────────────────────────────────────────────────────
 // GET USER BY ID
@@ -110,6 +117,68 @@ exports.updateProfile = asyncHandler(async (req, res) => {
     success: true,
     message: 'Profile updated successfully',
     data: { user: user.getPublicProfile() },
+  });
+});
+
+// UPLOAD AVATAR
+exports.uploadAvatar = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+
+  if (req.user.id !== userId && req.user.role !== 'admin') {
+    const error = new Error('Not authorized to update this avatar');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  if (!req.file) {
+    const error = new Error('Avatar image file is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+    const error = new Error('Cloudinary is not configured on the server');
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const uploadResult = await new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: 'intellmeet/avatars',
+        resource_type: 'image',
+        transformation: [
+          { width: 360, height: 360, crop: 'fill', gravity: 'face' },
+          { quality: 'auto', fetch_format: 'auto' },
+        ],
+      },
+      (error, result) => {
+        if (error) reject(error);
+        else resolve(result);
+      }
+    );
+
+    stream.end(req.file.buffer);
+  });
+
+  const user = await User.findByIdAndUpdate(
+    userId,
+    { avatar: uploadResult.secure_url },
+    { new: true }
+  ).select('-password');
+
+  if (!user) {
+    const error = new Error('User not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  logger.info(`Avatar uploaded for: ${user.email}`);
+
+  res.status(200).json({
+    success: true,
+    message: 'Avatar uploaded successfully',
+    data: { user },
   });
 });
 
@@ -289,6 +358,7 @@ module.exports = {
   getUserById: exports.getUserById,
   getAllUsers: exports.getAllUsers,
   updateProfile: exports.updateProfile,
+  uploadAvatar: exports.uploadAvatar,
   updatePreferences: exports.updatePreferences,
   updateStatus: exports.updateStatus,
   searchUsers: exports.searchUsers,

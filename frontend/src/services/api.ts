@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+export const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
 
 // Create axios instance
 const apiClient = axios.create({
@@ -36,9 +37,11 @@ apiClient.interceptors.response.use(
 
       try {
         const refreshToken = localStorage.getItem('refreshToken');
-        const response = await axios.post(`${API_BASE_URL}/auth/refresh-token`, {
-          refreshToken,
-        });
+        const response = await axios.post(
+          `${API_BASE_URL}/auth/refresh-token`,
+          { refreshToken },
+          { withCredentials: true }
+        );
 
         const { accessToken } = response.data.data;
         localStorage.setItem('accessToken', accessToken);

@@ -1,60 +1,88 @@
 import { Link, useLocation } from 'react-router-dom';
-import { useUIStore } from '../../store/uiStore';
 import {
-  Home,
-  Video,
-  Users,
+  BarChart3,
   CheckSquare,
-  MessageSquare,
-  Settings,
+  Home,
   LogOut,
   Menu,
+  MessageSquare,
+  Settings,
+  Sparkles,
+  Users,
+  Video,
   X,
+  Zap,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
+import { useUIStore } from '../../store/uiStore';
+import { getInitials } from '../../lib/utils';
 
 export default function Sidebar() {
   const { sidebarOpen, toggleSidebar } = useUIStore();
-  const { logout } = useAuthStore();
+  const { logout, user } = useAuthStore();
   const location = useLocation();
 
   const menuItems = [
-    { icon: Home, label: 'Dashboard', href: '/', id: 'dashboard' },
-    { icon: Video, label: 'Meetings', href: '/meeting/new', id: 'meetings' },
-    { icon: Users, label: 'Teams', href: '/teams', id: 'teams' },
-    { icon: CheckSquare, label: 'Tasks', href: '/tasks', id: 'tasks' },
-    { icon: MessageSquare, label: 'Messages', href: '/messages', id: 'messages' },
+    { icon: Home,         label: 'Dashboard', href: '/',         id: 'dashboard' },
+    { icon: Video,        label: 'Meetings',  href: '/meeting/new?mode=create', id: 'meetings' },
+    { icon: Users,        label: 'Teams',     href: '/teams',    id: 'teams' },
+    { icon: CheckSquare,  label: 'Tasks',     href: '/tasks',    id: 'tasks' },
+    { icon: MessageSquare,label: 'Messages',  href: '/messages', id: 'messages' },
   ];
 
   const isActive = (href: string, id: string) =>
     id === 'meetings'
       ? location.pathname.startsWith('/meeting')
-      : location.pathname === href || location.pathname.startsWith(href);
+      : href === '/'
+        ? location.pathname === '/' || location.pathname === '/dashboard'
+        : location.pathname.startsWith(href);
 
   return (
     <>
-      {/* Mobile Menu Button */}
+      {/* Mobile toggle */}
       <button
+        type="button"
         onClick={toggleSidebar}
-        className="fixed top-4 left-4 z-50 lg:hidden p-2 bg-white dark:bg-gray-900 rounded-lg"
+        className="fixed left-4 top-4 z-50 flex h-10 w-10 items-center justify-center rounded-xl border border-[--color-border] bg-white shadow-sm text-[--color-text-secondary] hover:bg-[--color-surface-2] transition-colors lg:hidden"
+        title="Toggle navigation"
+        id="sidebar-toggle"
       >
-        {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
+        {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
       </button>
 
       {/* Sidebar */}
-      <div
+      <aside
         className={`${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } fixed lg:static inset-y-0 left-0 w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 p-6 transition-transform duration-300 lg:translate-x-0 z-40 flex flex-col`}
+        } fixed inset-y-0 left-0 z-40 flex w-[260px] flex-col border-r border-[--color-border] bg-white transition-transform duration-300 lg:static lg:translate-x-0`}
+        style={{ boxShadow: sidebarOpen ? '4px 0 24px rgba(15,23,42,0.08)' : 'none' }}
       >
-        {/* Logo */}
-        <div className="mb-8 mt-4 lg:mt-0">
-          <h1 className="text-2xl font-black text-primary">IntellMeet</h1>
-          <p className="text-xs text-gray-600 dark:text-gray-400">Enterprise Platform</p>
+        {/* Brand */}
+        <div className="flex items-center gap-3 px-5 py-5 border-b border-[--color-border]">
+          <div
+            className="flex h-10 w-10 items-center justify-center rounded-xl shrink-0"
+            style={{ background: 'linear-gradient(135deg, #2563EB, #7c3aed)' }}
+          >
+            <Sparkles className="h-5 w-5 text-white" />
+          </div>
+          <div>
+            <p className="text-base font-800 text-[--color-foreground] tracking-tight font-extrabold">IntellMeet</p>
+            <p className="text-[11px] font-semibold text-[--color-text-muted] uppercase tracking-widest">Zidio Workspace</p>
+          </div>
+        </div>
+
+        {/* AI status pill */}
+        <div className="mx-4 my-4 flex items-center gap-2.5 rounded-xl border border-[--color-border] bg-[--color-surface-2] px-4 py-3">
+          <Zap className="h-4 w-4 text-[--color-primary] shrink-0" />
+          <div>
+            <p className="text-xs font-700 text-[--color-foreground] font-bold">AI Engine Active</p>
+            <p className="text-[11px] text-[--color-text-muted] leading-relaxed mt-0.5">Transcription · Summaries · Actions</p>
+          </div>
         </div>
 
         {/* Navigation */}
-        <nav className="space-y-2 flex-1">
+        <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto scrollbar-none">
+          <p className="px-3 pt-1 pb-2 text-[10px] font-700 uppercase tracking-widest text-[--color-text-muted] font-bold">Main</p>
           {menuItems.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href, item.id);
@@ -62,43 +90,80 @@ export default function Sidebar() {
               <Link
                 key={item.id}
                 to={item.href}
-                className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors ${
+                id={`nav-${item.id}`}
+                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-600 transition-all duration-150 font-semibold ${
                   active
-                    ? 'bg-primary text-white'
-                    : 'text-gray-700 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                    ? 'bg-[--color-primary] text-white shadow-sm'
+                    : 'text-[--color-text-secondary] hover:bg-[--color-surface-2] hover:text-[--color-foreground]'
                 }`}
               >
-                <Icon size={20} />
-                <span className="text-sm font-medium">{item.label}</span>
+                <Icon className="h-[18px] w-[18px] shrink-0" />
+                {item.label}
+                {active && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-white/70" />}
               </Link>
             );
           })}
+
+          <p className="px-3 pt-4 pb-2 text-[10px] font-bold uppercase tracking-widest text-[--color-text-muted]">Analytics</p>
+          <Link
+            to="/"
+            id="nav-analytics"
+            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-[--color-text-secondary] hover:bg-[--color-surface-2] hover:text-[--color-foreground] transition-all"
+          >
+            <BarChart3 className="h-[18px] w-[18px] shrink-0" />
+            Insights
+          </Link>
         </nav>
 
-        {/* Bottom Actions */}
-        <div className="space-y-2 border-t border-gray-200 dark:border-gray-800 pt-4">
+        {/* Bottom section */}
+        <div className="border-t border-[--color-border] p-3 space-y-0.5">
           <Link
             to="/profile"
-            className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-gray-700 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            id="nav-profile"
+            className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-all ${
+              location.pathname === '/profile'
+                ? 'bg-[--color-primary] text-white'
+                : 'text-[--color-text-secondary] hover:bg-[--color-surface-2] hover:text-[--color-foreground]'
+            }`}
           >
-            <Settings size={20} />
-            <span className="text-sm font-medium">Settings</span>
+            <Settings className="h-[18px] w-[18px] shrink-0" />
+            Settings
           </Link>
-          <button
-            onClick={() => logout()}
-            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-gray-700 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 transition-colors"
-          >
-            <LogOut size={20} />
-            <span className="text-sm font-medium">Logout</span>
-          </button>
-        </div>
-      </div>
 
-      {/* Overlay */}
+          {/* User card */}
+          {user && (
+            <div className="mt-2 flex items-center gap-3 rounded-xl bg-[--color-surface-2] px-3 py-2.5">
+              <div
+                className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
+                style={{ background: 'linear-gradient(135deg, #2563EB, #7c3aed)' }}
+              >
+                {getInitials(user.firstName || 'I', user.lastName || 'M')}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-bold text-[--color-foreground] truncate">{user.firstName} {user.lastName}</p>
+                <p className="text-[11px] text-[--color-text-muted] truncate capitalize">{user.role === 'user' ? 'Member' : user.role}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void logout()}
+                id="btn-logout"
+                className="rounded-lg p-1.5 text-[--color-text-muted] hover:bg-red-50 hover:text-red-600 transition-colors"
+                title="Logout"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+        </div>
+      </aside>
+
+      {/* Mobile overlay */}
       {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-30 lg:hidden"
+        <button
+          type="button"
+          className="fixed inset-0 z-30 bg-black/30 backdrop-blur-sm lg:hidden"
           onClick={toggleSidebar}
+          aria-label="Close navigation"
         />
       )}
     </>

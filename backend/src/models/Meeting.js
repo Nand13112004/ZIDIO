@@ -101,10 +101,37 @@ const meetingSchema = new mongoose.Schema(
         default: false,
       },
       password: String,
+      waitingRoom: {
+        type: Boolean,
+        default: false,
+      },
+      endToEndEncryption: {
+        type: Boolean,
+        default: false,
+      },
+      allowReactions: {
+        type: Boolean,
+        default: true,
+      },
+      autoTranscription: {
+        type: Boolean,
+        default: true,
+      },
     },
     metadata: {
       topic: String,
       tags: [String],
+      agenda: String,
+      recurrence: String,
+      durationMinutes: Number,
+      delivery: {
+        email: Boolean,
+        whatsapp: Boolean,
+      },
+      integrations: {
+        calendarUrl: String,
+        webhookUrl: String,
+      },
       customFields: mongoose.Schema.Types.Mixed,
     },
   },

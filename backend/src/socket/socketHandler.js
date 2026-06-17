@@ -8,6 +8,18 @@ const initializeSocket = (io) => {
   // Track connected users: userId -> socketId
   const connectedUsers = new Map();
   const meetingRooms = new Map();
+  const meetingStates = new Map();
+
+  const getMeetingState = (meetingId) => {
+    if (!meetingStates.has(meetingId)) {
+      meetingStates.set(meetingId, {
+        sharedNotes: '',
+        raisedHands: {},
+        settings: {},
+      });
+    }
+    return meetingStates.get(meetingId);
+  };
 
   const getMeetingParticipants = (meetingId) => {
     return Array.from(meetingRooms.get(meetingId)?.values() || []);
@@ -69,6 +81,7 @@ const initializeSocket = (io) => {
       if (!meetingRooms.has(meetingId)) {
         meetingRooms.set(meetingId, new Map());
       }
+      const state = getMeetingState(meetingId);
 
       meetingRooms.get(meetingId).set(socket.id, {
         userId,
@@ -83,6 +96,12 @@ const initializeSocket = (io) => {
         socketId: socket.id,
       });
       emitMeetingParticipants(meetingId);
+      socket.emit('meeting:state', {
+        meetingId,
+        sharedNotes: state.sharedNotes,
+        raisedHands: state.raisedHands,
+        settings: state.settings,
+      });
       logger.info(`User ${userName} joined meeting ${meetingId}`);
     });
 
@@ -147,6 +166,28 @@ const initializeSocket = (io) => {
       }
     });
 
+    socket.on('chat:join', ({ roomId, teamId }) => {
+      if (roomId) {
+        socket.join(roomId);
+        logger.debug(`Socket ${socket.id} joined chat room ${roomId}`);
+      }
+      if (teamId) {
+        socket.join(`team:${teamId}`);
+        logger.debug(`Socket ${socket.id} joined team chat ${teamId}`);
+      }
+    });
+
+    socket.on('chat:leave', ({ roomId, teamId }) => {
+      if (roomId) {
+        socket.leave(roomId);
+        logger.debug(`Socket ${socket.id} left chat room ${roomId}`);
+      }
+      if (teamId) {
+        socket.leave(`team:${teamId}`);
+        logger.debug(`Socket ${socket.id} left team chat ${teamId}`);
+      }
+    });
+
     // --------------- NOTIFICATIONS ---------------
     socket.on('notification:send', ({ recipientId, notification }) => {
       io.to(connectedUsers.get(recipientId) || recipientId).emit(
@@ -194,6 +235,81 @@ const initializeSocket = (io) => {
 
     socket.on('meeting:participant-video-off', ({ meetingId, userId }) => {
       io.to(`meeting:${meetingId}`).emit('meeting:participant-video-off', { userId });
+    });
+
+    socket.on('meeting:reaction', ({ meetingId, userId, userName, emoji }) => {
+      io.to(`meeting:${meetingId}`).emit('meeting:reaction', {
+        userId,
+        userName,
+        emoji,
+        timestamp: new Date(),
+      });
+    });
+
+    socket.on('meeting:raise-hand', ({ meetingId, userId, userName }) => {
+      const state = getMeetingState(meetingId);
+      state.raisedHands[userId] = {
+        userId,
+        userName,
+        raisedAt: new Date(),
+      };
+      io.to(`meeting:${meetingId}`).emit('meeting:raised-hands', state.raisedHands);
+    });
+
+    socket.on('meeting:lower-hand', ({ meetingId, userId }) => {
+      const state = getMeetingState(meetingId);
+      delete state.raisedHands[userId];
+      io.to(`meeting:${meetingId}`).emit('meeting:raised-hands', state.raisedHands);
+    });
+
+    socket.on('meeting:shared-notes-update', ({ meetingId, notes, userId, userName }) => {
+      const state = getMeetingState(meetingId);
+      state.sharedNotes = notes || '';
+      socket.to(`meeting:${meetingId}`).emit('meeting:shared-notes-update', {
+        notes: state.sharedNotes,
+        userId,
+        userName,
+        updatedAt: new Date(),
+      });
+    });
+
+    socket.on('meeting:task-create', ({ meetingId, task, userId, userName }) => {
+      io.to(`meeting:${meetingId}`).emit('meeting:task-create', {
+        task,
+        userId,
+        userName,
+        createdAt: new Date(),
+      });
+    });
+
+    socket.on('meeting:settings-update', ({ meetingId, settings, userId, userName }) => {
+      const state = getMeetingState(meetingId);
+      state.settings = {
+        ...state.settings,
+        ...settings,
+      };
+      io.to(`meeting:${meetingId}`).emit('meeting:settings-update', {
+        settings: state.settings,
+        userId,
+        userName,
+      });
+    });
+
+    socket.on('meeting:admission-request', ({ meetingId, userId, userName }) => {
+      io.to(`meeting:${meetingId}`).emit('meeting:admission-request', {
+        meetingId,
+        userId,
+        userName,
+        socketId: socket.id,
+        requestedAt: new Date(),
+      });
+    });
+
+    socket.on('meeting:admission-approved', ({ meetingId, userId, socketId }) => {
+      io.to(socketId).emit('meeting:admission-approved', {
+        meetingId,
+        userId,
+      });
     });
 
     // --------------- TASK UPDATES ---------------

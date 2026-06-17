@@ -1,9 +1,11 @@
+const crypto = require('crypto');
 const asyncHandler = require('../utils/asyncHandler');
 const User = require('../models/User');
 const Team = require('../models/Team');
 const Task = require('../models/Task');
 const logger = require('../utils/logger');
 const { v4: uuidv4 } = require('uuid');
+const nodemailer = require('nodemailer');
 
 // ────────────────────────────────────────────────────────
 // CREATE TEAM
@@ -65,7 +67,7 @@ exports.getTeam = asyncHandler(async (req, res) => {
   }
 
   // Check if user is team member
-  const isMember = team.members.some((m) => m.userId._id.toString() === req.user.id);
+  const isMember = team.members.some((m) => m.userId && m.userId._id.toString() === req.user.id);
   if (!isMember) {
     const error = new Error('Not authorized to view this team');
     error.statusCode = 403;
@@ -286,6 +288,185 @@ exports.deleteTeam = asyncHandler(async (req, res) => {
   });
 });
 
+// ────────────────────────────────────────────────────────
+// INVITE BY EMAIL  (generates a secure token, stores in pendingInvites)
+// ────────────────────────────────────────────────────────
+
+exports.inviteByEmail = asyncHandler(async (req, res) => {
+  const { teamId } = req.params;
+  const { email, role = 'member' } = req.body;
+
+  if (!email) {
+    const error = new Error('Email is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const team = await Team.findById(teamId);
+  if (!team) {
+    const error = new Error('Team not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // Check authorization
+  const userRole = team.members.find((m) => m.userId.toString() === req.user.id)?.role;
+  if (!['owner', 'admin'].includes(userRole)) {
+    const error = new Error('Not authorized to invite members');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+
+  // If user already exists in the system, add them directly
+  const existingUser = await User.findOne({ email: normalizedEmail });
+  if (existingUser) {
+    const memberExists = team.members.some((m) => m.userId.toString() === existingUser._id.toString());
+    if (memberExists) {
+      return res.status(400).json({ success: false, message: 'User is already a team member' });
+    }
+    team.members.push({ userId: existingUser._id, role });
+    team.stats.memberCount = team.members.length;
+    await team.save();
+    await User.findByIdAndUpdate(existingUser._id, { $addToSet: { teams: team._id } });
+    logger.info(`Existing user ${normalizedEmail} added directly to team ${team.name}`);
+    return res.status(200).json({ success: true, message: 'User added to team directly (already has an account)' });
+  }
+
+  // New user — generate a signed invite token valid for 7 days
+  const inviteToken = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+  // Remove any existing pending invite for this email on this team
+  team.pendingInvites = (team.pendingInvites || []).filter((inv) => inv.email !== normalizedEmail);
+  team.pendingInvites.push({
+    email: normalizedEmail,
+    token: inviteToken,
+    role,
+    invitedBy: req.user.id,
+    expiresAt,
+  });
+  await team.save();
+
+  // Build invite link — new users go to /register, existing users can use /login
+  const clientUrl = (process.env.CLIENT_URL || 'http://localhost:5173').replace(/\/+$/, '');
+  const inviteLink = `${clientUrl}/register?teamInvite=${inviteToken}&teamId=${team._id}&email=${encodeURIComponent(normalizedEmail)}`;
+  const loginLink  = `${clientUrl}/login?teamInvite=${inviteToken}&teamId=${team._id}&email=${encodeURIComponent(normalizedEmail)}`;
+
+  // Send email via nodemailer
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER || 'nand13112004@gmail.com',
+      pass: process.env.EMAIL_PASS || 'tlzg xbok gmxq ieic',
+    },
+  });
+
+  const mailOptions = {
+    from: `"Zidio IntellMeet" <${process.env.EMAIL_USER || 'nand13112004@gmail.com'}>`,
+    to: normalizedEmail,
+    subject: `You're invited to join "${team.name}" on Zidio`,
+    html: `
+      <div style="font-family:sans-serif;max-width:560px;margin:auto;padding:32px;border:1px solid #e2e8f0;border-radius:12px">
+        <h2 style="color:#1e40af;margin-bottom:8px">Team Invitation 🎉</h2>
+        <p>Hi there,</p>
+        <p><strong>${req.user.firstName} ${req.user.lastName}</strong> has invited you to join the team
+           <strong>${team.name}</strong> on Zidio IntellMeet.</p>
+        <p style="margin:24px 0">
+          <a href="${inviteLink}" style="padding:12px 24px;background:#2563EB;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block">
+            Accept &amp; Create Account
+          </a>
+        </p>
+        <p style="color:#64748b;font-size:13px">Already have an account?
+          <a href="${loginLink}" style="color:#2563EB">Sign in to accept the invite</a>
+        </p>
+        <p style="color:#94a3b8;font-size:12px;margin-top:24px">This invite expires in 7 days.</p>
+      </div>
+    `,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    logger.info(`Invite email sent to ${normalizedEmail} for team ${team.name}`);
+  } catch (err) {
+    logger.error('Email send failed:', err);
+    const emailError = new Error('Failed to send invitation email. Check email credentials.');
+    emailError.statusCode = 500;
+    throw emailError;
+  }
+
+  res.status(200).json({
+    success: true,
+    message: `Invitation email sent to ${normalizedEmail}`,
+  });
+});
+
+// ────────────────────────────────────────────────────────
+// ACCEPT INVITE  (called after login/register with the token)
+// ────────────────────────────────────────────────────────
+
+exports.acceptInvite = asyncHandler(async (req, res) => {
+  const { token, teamId } = req.body;
+
+  if (!token || !teamId) {
+    const error = new Error('token and teamId are required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const team = await Team.findById(teamId);
+  if (!team) {
+    const error = new Error('Team not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const invite = (team.pendingInvites || []).find(
+    (inv) => inv.token === token
+  );
+
+  if (!invite) {
+    const error = new Error('Invalid or already-used invite link');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (new Date() > invite.expiresAt) {
+    const error = new Error('This invite link has expired. Ask the team admin to resend it.');
+    error.statusCode = 410;
+    throw error;
+  }
+
+  // Verify the authenticated user's email matches the invite (optional but recommended)
+  const currentUser = await User.findById(req.user.id);
+  if (!currentUser) {
+    const error = new Error('User not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // Check already a member
+  const alreadyMember = team.members.some((m) => m.userId.toString() === req.user.id);
+  if (!alreadyMember) {
+    team.members.push({ userId: req.user.id, role: invite.role || 'member' });
+    team.stats.memberCount = team.members.length;
+    await User.findByIdAndUpdate(req.user.id, { $addToSet: { teams: team._id } });
+  }
+
+  // Consume the invite token
+  team.pendingInvites = team.pendingInvites.filter((inv) => inv.token !== token);
+  await team.save();
+
+  logger.info(`User ${currentUser.email} accepted invite to team ${team.name}`);
+
+  res.status(200).json({
+    success: true,
+    message: `Successfully joined team "${team.name}"`,
+    data: { teamId: team._id, teamName: team.name },
+  });
+});
+
 module.exports = {
   createTeam: exports.createTeam,
   getTeam: exports.getTeam,
@@ -294,4 +475,6 @@ module.exports = {
   addTeamMember: exports.addTeamMember,
   removeTeamMember: exports.removeTeamMember,
   deleteTeam: exports.deleteTeam,
+  inviteByEmail: exports.inviteByEmail,
+  acceptInvite: exports.acceptInvite,
 };

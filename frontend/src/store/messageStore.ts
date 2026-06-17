@@ -48,17 +48,14 @@ export const useMessageStore = create<MessageStore>((set) => ({
 
   sendMessage: async (data: any) => {
     try {
-      set({ isLoading: true, error: null });
-      const response = await messageService.sendMessage(data);
-      set((state) => ({
-        messages: [...state.messages, response.data.data.message],
-      }));
+      set({ error: null });
+      // Just POST — the backend emits `message:new` via socket to all room members
+      // including the sender, so the socket listener in ChatPanel handles the state update
+      await messageService.sendMessage(data);
     } catch (error: any) {
       const message = error.response?.data?.message || 'Failed to send message';
       set({ error: message });
       throw error;
-    } finally {
-      set({ isLoading: false });
     }
   },
 

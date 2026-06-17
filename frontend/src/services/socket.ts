@@ -87,6 +87,14 @@ class SocketService {
     this.emit('chat:stop-typing', { roomId, userId });
   }
 
+  joinChat(roomId?: string, teamId?: string) {
+    this.emit('chat:join', { roomId, teamId });
+  }
+
+  leaveChat(roomId?: string, teamId?: string) {
+    this.emit('chat:leave', { roomId, teamId });
+  }
+
   // WebRTC signaling
   sendWebRTCOffer(to: string, offer: any) {
     this.emit('webrtc:offer', { to, offer });

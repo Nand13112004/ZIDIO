@@ -1,4 +1,4 @@
-import apiClient from './api';
+import apiClient, { API_ORIGIN } from './api';
 
 // Auth Service
 export const authService = {
@@ -16,6 +16,11 @@ export const authService = {
 
   refreshToken: (refreshToken: string) =>
     apiClient.post('/auth/refresh-token', { refreshToken }),
+
+  getGoogleLoginUrl: () => `${API_ORIGIN}/api/auth/google`,
+
+  setPassword: (password: string) =>
+    apiClient.post('/auth/set-password', { password }),
 };
 
 // User Service
@@ -31,6 +36,15 @@ export const userService = {
 
   updateProfile: (userId: string, data: any) =>
     apiClient.put(`/users/${userId}`, data),
+
+  uploadAvatar: (userId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    return apiClient.put(`/users/${userId}/avatar`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+
 
   updatePreferences: (userId: string, preferences: any) =>
     apiClient.put(`/users/${userId}/preferences`, preferences),
@@ -65,13 +79,26 @@ export const teamService = {
   removeMember: (teamId: string, memberId: string) =>
     apiClient.delete(`/teams/${teamId}/members/${memberId}`),
 
+  inviteByEmail: (teamId: string, email: string, role = 'member') =>
+    apiClient.post(`/teams/${teamId}/invite`, { email, role }),
+
+  acceptInvite: (token: string, teamId: string) =>
+    apiClient.post('/teams/accept-invite', { token, teamId }),
+
   deleteTeam: (teamId: string) =>
     apiClient.delete(`/teams/${teamId}`),
 };
 
 // Meeting Service
 export const meetingService = {
-  createMeeting: (data: { title: string; description?: string; scheduledAt?: string; team?: string }) =>
+  createMeeting: (data: {
+    title: string;
+    description?: string;
+    scheduledAt?: string;
+    team?: string;
+    settings?: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
+  }) =>
     apiClient.post('/meetings', data),
 
   getMeetings: (status = 'completed', page = 1, limit = 10) =>
@@ -80,8 +107,8 @@ export const meetingService = {
   getMeetingById: (meetingId: string) =>
     apiClient.get(`/meetings/${meetingId}`),
 
-  joinMeeting: (meetingId: string) =>
-    apiClient.post(`/meetings/${meetingId}/join`),
+  joinMeeting: (meetingId: string, password?: string) =>
+    apiClient.post(`/meetings/${meetingId}/join`, { password }),
 
   leaveMeeting: (meetingId: string) =>
     apiClient.post(`/meetings/${meetingId}/leave`),
@@ -97,6 +124,9 @@ export const meetingService = {
 
   getMeetingSummary: (meetingId: string) =>
     apiClient.get(`/meetings/${meetingId}/summary`),
+
+  generateMeetingIntelligence: (meetingId: string, transcript: string) =>
+    apiClient.post(`/meetings/${meetingId}/intelligence`, { transcript }),
 };
 
 // Message Service

@@ -38,8 +38,16 @@ Render will host the Node.js Express server. We have added a `render.yaml` Bluep
 | `CLIENT_URL` | `https://your-app.vercel.app` | URL of the frontend deployment (no trailing slash) |
 | `JWT_SECRET` | `your_long_random_jwt_secret` | Secure key for Access Token signatures |
 | `JWT_REFRESH_SECRET` | `your_long_random_refresh_secret` | Secure key for Refresh Token signatures |
-| `JWT_EXPIRES_IN` | `15m` | Lifetime of Access Tokens |
-| `JWT_REFRESH_EXPIRES_IN` | `7d` | Lifetime of Refresh Tokens |
+| `JWT_EXPIRE` | `1h` | Lifetime of access tokens |
+| `JWT_REFRESH_EXPIRE` | `7d` | Lifetime of refresh tokens |
+| `API_BASE_URL` | `https://intellmeet-backend.onrender.com` | Public Render backend root URL, used for OAuth callbacks |
+| `OPENAI_API_KEY` | `sk-...` | Enables AI meeting intelligence |
+| `CLOUDINARY_CLOUD_NAME` | `your_cloud_name` | Enables avatar upload |
+| `CLOUDINARY_API_KEY` | `your_cloudinary_key` | Enables avatar upload |
+| `CLOUDINARY_API_SECRET` | `your_cloudinary_secret` | Enables avatar upload |
+| `GOOGLE_CLIENT_ID` | `...apps.googleusercontent.com` | Enables Google OAuth login |
+| `GOOGLE_CLIENT_SECRET` | `...` | Enables Google OAuth login |
+| `GOOGLE_CALLBACK_URL` | `https://intellmeet-backend.onrender.com/api/auth/google/callback` | Must match the Google Cloud OAuth redirect URI |
 
 ---
 

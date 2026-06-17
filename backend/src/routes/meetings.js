@@ -6,7 +6,52 @@ const Meeting = require('../models/Meeting');
 const Message = require('../models/Message');
 const Summary = require('../models/Summary');
 const logger = require('../utils/logger');
+const aiService = require('../services/aiService');
 const { v4: uuidv4 } = require('uuid');
+
+const sentimentWords = {
+  positive: ['good', 'great', 'excellent', 'happy', 'resolved', 'clear', 'approved', 'success', 'done', 'confident'],
+  negative: ['blocked', 'risk', 'late', 'issue', 'problem', 'concern', 'delay', 'failed', 'stuck', 'urgent'],
+};
+
+const buildFallbackReport = (transcript, title) => {
+  const sentences = transcript
+    .split(/[.!?\n]+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+
+  const actionSentences = sentences.filter((sentence) =>
+    /\b(will|should|need to|needs to|must|action|todo|follow up|assign|complete|finish)\b/i.test(sentence)
+  );
+
+  const words = transcript.toLowerCase().split(/\W+/);
+  const positive = words.filter((word) => sentimentWords.positive.includes(word)).length;
+  const negative = words.filter((word) => sentimentWords.negative.includes(word)).length;
+  const totalSignal = Math.max(positive + negative, 1);
+  const neutralScore = Math.max(0.15, 1 - totalSignal / Math.max(words.length / 18, 1));
+
+  return {
+    summary:
+      sentences.slice(0, 2).join('. ') ||
+      `${title || 'This meeting'} was captured and converted into a concise AI-ready report.`,
+    keyPoints: sentences.slice(0, 5),
+    actionItems: actionSentences.slice(0, 6).map((sentence) => ({
+      task: sentence,
+      priority: /urgent|asap|critical|today/i.test(sentence) ? 'urgent' : 'medium',
+      isExtracted: true,
+    })),
+    sentiment: {
+      overall: positive > negative ? 'positive' : negative > positive ? 'negative' : 'neutral',
+      scores: {
+        positive: Number((positive / totalSignal).toFixed(2)),
+        neutral: Number(neutralScore.toFixed(2)),
+        negative: Number((negative / totalSignal).toFixed(2)),
+      },
+    },
+    generatedBy: 'manual',
+    confidence: 0.85,
+  };
+};
 
 // ────────────────────────────────────────────────────────
 // CREATE MEETING
@@ -16,7 +61,7 @@ router.post(
   '/',
   protect,
   asyncHandler(async (req, res) => {
-    const { title, description, scheduledAt, team } = req.body;
+    const { title, description, scheduledAt, team, settings = {}, metadata = {} } = req.body;
 
     if (!title) {
       const error = new Error('Meeting title is required');
@@ -31,6 +76,27 @@ router.post(
       host: req.user.id,
       scheduledAt: scheduledAt || new Date(),
       team,
+      settings: {
+        requirePassword: Boolean(settings.requirePassword && settings.password),
+        password: settings.password || '',
+        waitingRoom: Boolean(settings.waitingRoom),
+        endToEndEncryption: Boolean(settings.endToEndEncryption),
+        allowScreenShare: settings.allowScreenShare !== false,
+        allowChat: settings.allowChat !== false,
+        allowRecording: settings.allowRecording !== false,
+        allowReactions: settings.allowReactions !== false,
+        autoTranscription: settings.autoTranscription !== false,
+        maxParticipants: settings.maxParticipants || 100,
+      },
+      metadata: {
+        agenda: metadata.agenda || '',
+        recurrence: metadata.recurrence || 'none',
+        durationMinutes: metadata.durationMinutes || 30,
+        delivery: metadata.delivery || {},
+        integrations: metadata.integrations || {},
+        topic: metadata.topic || '',
+        tags: metadata.tags || [],
+      },
       participants: [
         {
           userId: req.user.id,
@@ -71,10 +137,93 @@ router.get(
       throw error;
     }
 
+    if (meeting.settings?.requirePassword && meeting.settings.password !== req.body.password) {
+      const error = new Error('Meeting password is required or incorrect');
+      error.statusCode = 403;
+      throw error;
+    }
+
     res.status(200).json({
       success: true,
       message: 'Meeting fetched successfully',
       data: { meeting },
+    });
+  })
+);
+
+// GENERATE MEETING INTELLIGENCE
+router.post(
+  '/:meetingId/intelligence',
+  protect,
+  asyncHandler(async (req, res) => {
+    const { meetingId } = req.params;
+    const { transcript = '' } = req.body;
+
+    const meeting = await Meeting.findOne({ meetingId });
+
+    if (!meeting) {
+      const error = new Error('Meeting not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (!transcript.trim()) {
+      const error = new Error('Transcript or meeting notes are required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    let report;
+    try {
+      report = await aiService.generateMeetingReport({
+        title: meeting.title,
+        transcript,
+      });
+      report.generatedBy = 'openai';
+      report.confidence = report.metadata?.confidence || 0.9;
+    } catch (error) {
+      logger.warn(`Using fallback meeting intelligence: ${error.message}`);
+      report = buildFallbackReport(transcript, meeting.title);
+    }
+
+    const normalizedActionItems = (report.actionItems || []).map((item) => ({
+      task: item.task || item.description || String(item),
+      priority: ['low', 'medium', 'high', 'urgent'].includes(item.priority) ? item.priority : 'medium',
+      isExtracted: true,
+    }));
+
+    const summary = await Summary.findOneAndUpdate(
+      { meeting: meeting._id },
+      {
+        meeting: meeting._id,
+        title: `${meeting.title} AI Report`,
+        transcript,
+        summary: report.summary,
+        keyPoints: report.keyPoints || [],
+        actionItems: normalizedActionItems,
+        sentiment: report.sentiment || { overall: 'neutral' },
+        duration: meeting.getDuration(),
+        wordCount: transcript.split(/\s+/).filter(Boolean).length,
+        generatedBy: report.generatedBy || 'manual',
+        isPublished: true,
+        publishedAt: new Date(),
+        metadata: {
+          language: 'en',
+          confidence: report.confidence || 0.85,
+          tags: ['ai-summary', 'action-items', 'sentiment'],
+        },
+      },
+      { new: true, upsert: true }
+    );
+
+    meeting.transcript = transcript;
+    meeting.summary = summary._id;
+    await meeting.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Meeting intelligence generated',
+      data: { summary },
     });
   })
 );

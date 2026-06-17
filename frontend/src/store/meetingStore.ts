@@ -24,7 +24,7 @@ interface MeetingStore {
   fetchMeetings: (status: string) => Promise<void>;
   fetchMeetingById: (meetingId: string) => Promise<void>;
   createMeeting: (data: any) => Promise<Meeting>;
-  joinMeeting: (meetingId: string) => Promise<void>;
+  joinMeeting: (meetingId: string, password?: string) => Promise<void>;
   leaveMeeting: (meetingId: string) => Promise<void>;
   endMeeting: (meetingId: string) => Promise<void>;
   setCurrentMeeting: (meeting: Meeting | null) => void;
@@ -79,10 +79,10 @@ export const useMeetingStore = create<MeetingStore>((set) => ({
     }
   },
 
-  joinMeeting: async (meetingId: string) => {
+  joinMeeting: async (meetingId: string, password?: string) => {
     try {
       set({ isLoading: true });
-      await meetingService.joinMeeting(meetingId);
+      await meetingService.joinMeeting(meetingId, password);
     } catch (error: any) {
       set({ error: error.response?.data?.message || 'Failed to join meeting' });
       throw error;

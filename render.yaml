@@ -19,10 +19,12 @@ services:
         generateValue: true
       - key: JWT_REFRESH_SECRET
         generateValue: true
-      - key: JWT_EXPIRES_IN
-        value: 15m
-      - key: JWT_REFRESH_EXPIRES_IN
+      - key: JWT_EXPIRE
+        value: 1h
+      - key: JWT_REFRESH_EXPIRE
         value: 7d
+      - key: API_BASE_URL
+        sync: false
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY
@@ -30,4 +32,10 @@ services:
       - key: CLOUDINARY_API_SECRET
         sync: false
       - key: OPENAI_API_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CALLBACK_URL
         sync: false

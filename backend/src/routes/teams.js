@@ -9,6 +9,8 @@ const {
   addTeamMember,
   removeTeamMember,
   deleteTeam,
+  inviteByEmail,
+  acceptInvite,
 } = require('../controllers/teamController');
 
 // ────────────────────────────────────────────────────────
@@ -49,6 +51,20 @@ router.put('/:teamId', protect, updateTeam);
  * @access Protected (owner/admin only)
  */
 router.post('/:teamId/members', protect, addTeamMember);
+
+/**
+ * @route  POST /api/teams/:teamId/invite
+ * @desc   Invite member to team by email
+ * @access Protected (owner/admin only)
+ */
+router.post('/:teamId/invite', protect, inviteByEmail);
+
+/**
+ * @route  POST /api/teams/accept-invite
+ * @desc   Accept a team invite token (called after login/register)
+ * @access Protected
+ */
+router.post('/accept-invite', protect, acceptInvite);
 
 /**
  * @route  DELETE /api/teams/:teamId/members/:memberId
