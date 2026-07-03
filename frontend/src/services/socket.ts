@@ -87,12 +87,12 @@ class SocketService {
     this.emit('chat:stop-typing', { roomId, userId });
   }
 
-  joinChat(roomId?: string, teamId?: string) {
-    this.emit('chat:join', { roomId, teamId });
+  joinChat(roomId?: string, teamId?: string, meetingId?: string) {
+    this.emit('chat:join', { roomId, teamId, meetingId });
   }
 
-  leaveChat(roomId?: string, teamId?: string) {
-    this.emit('chat:leave', { roomId, teamId });
+  leaveChat(roomId?: string, teamId?: string, meetingId?: string) {
+    this.emit('chat:leave', { roomId, teamId, meetingId });
   }
 
   // WebRTC signaling

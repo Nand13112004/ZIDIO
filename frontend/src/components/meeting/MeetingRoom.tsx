@@ -478,6 +478,12 @@ export default function MeetingRoom() {
       void completeJoinCurrentMeetingRef.current();
     };
 
+    const handleMeetingEnded = () => {
+      joinedMeetingRef.current = '';
+      setHasJoinedRoom(false);
+      navigate('/dashboard');
+    };
+
     socketService.on('meeting:state', handleMeetingState);
     socketService.on('meeting:reaction', handleReaction);
     socketService.on('meeting:raised-hands', handleRaisedHands);
@@ -486,6 +492,7 @@ export default function MeetingRoom() {
     socketService.on('meeting:settings-update', handleSettingsUpdate);
     socketService.on('meeting:admission-request', handleAdmissionRequest);
     socketService.on('meeting:admission-approved', handleAdmissionApproved);
+    socketService.on('meeting:ended', handleMeetingEnded);
 
     return () => {
       socketService.off('meeting:state', handleMeetingState);
@@ -496,8 +503,9 @@ export default function MeetingRoom() {
       socketService.off('meeting:settings-update', handleSettingsUpdate);
       socketService.off('meeting:admission-request', handleAdmissionRequest);
       socketService.off('meeting:admission-approved', handleAdmissionApproved);
+      socketService.off('meeting:ended', handleMeetingEnded);
     };
-  }, [isHost, user?._id]);
+  }, [isHost, user?._id, navigate]);
 
   const handleCreateMeeting = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1012,30 +1020,6 @@ export default function MeetingRoom() {
                       checked={setupForm.waitingRoom}
                       onChange={(checked) => setSetupForm((current) => ({ ...current, waitingRoom: checked }))}
                     />
-                    <ToggleLine
-                      icon={ShieldCheck}
-                      label="End-to-end encryption"
-                      checked={setupForm.endToEndEncryption}
-                      onChange={(checked) => setSetupForm((current) => ({ ...current, endToEndEncryption: checked }))}
-                    />
-                    <ToggleLine
-                      icon={CalendarClock}
-                      label="Recurring weekly"
-                      checked={setupForm.recurring}
-                      onChange={(checked) => setSetupForm((current) => ({ ...current, recurring: checked }))}
-                    />
-                    <ToggleLine
-                      icon={Mail}
-                      label="Email summary delivery"
-                      checked={setupForm.emailSummary}
-                      onChange={(checked) => setSetupForm((current) => ({ ...current, emailSummary: checked }))}
-                    />
-                    <ToggleLine
-                      icon={MessageCircle}
-                      label="WhatsApp summary delivery"
-                      checked={setupForm.whatsappSummary}
-                      onChange={(checked) => setSetupForm((current) => ({ ...current, whatsappSummary: checked }))}
-                    />
                   </div>
                 </div>
                 <button
@@ -1263,23 +1247,6 @@ export default function MeetingRoom() {
               {formatMeetingClock(meetingSeconds)} / {durationMinutes}m
             </span>
           </div>
-          <button
-            type="button"
-            onClick={() => void handleCopyInvite()}
-            className="im-btn im-btn-outline h-11 px-4"
-            id="btn-copy-invite-live"
-          >
-            <Copy className="h-4 w-4" />
-            {inviteCopied ? 'Copied' : 'Invite link'}
-          </button>
-          <button
-            type="button"
-            onClick={() => void leaveRealtimeMeeting('/meeting/new')}
-            className="im-btn im-btn-secondary h-11 px-4"
-          >
-            <ExternalLink className="h-4 w-4" />
-            New Room
-          </button>
         </div>
       </div>
 
@@ -1451,131 +1418,68 @@ export default function MeetingRoom() {
             )}
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-            <section className="im-card p-5">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <NotebookPen className="h-5 w-5 text-[--color-primary]" />
-                  <h3 className="font-bold text-[--color-foreground]">Shared Notes</h3>
-                </div>
-                <span className="im-badge im-badge-blue text-[11px]">Live sync</span>
+          <section className="im-card p-5">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <NotebookPen className="h-5 w-5 text-[--color-primary]" />
+                <h3 className="font-bold text-[--color-foreground]">Shared Notes</h3>
               </div>
-              <textarea
-                value={sharedNotes}
-                onChange={(event) => handleSharedNotesChange(event.target.value)}
-                rows={5}
-                className="im-input resize-none"
-                placeholder="Capture decisions, blockers, and notes together..."
+              <span className="im-badge im-badge-blue text-[11px]">Live sync</span>
+            </div>
+            <textarea
+              value={sharedNotes}
+              onChange={(event) => handleSharedNotesChange(event.target.value)}
+              rows={5}
+              className="im-input resize-none"
+              placeholder="Capture decisions, blockers, and notes together..."
+            />
+            <form onSubmit={handleCreateMeetingTask} className="mt-3 flex gap-2">
+              <input
+                value={meetingTask}
+                onChange={(event) => setMeetingTask(event.target.value)}
+                className="im-input min-w-0 flex-1"
+                placeholder="Create task from this meeting"
               />
-              <form onSubmit={handleCreateMeetingTask} className="mt-3 flex gap-2">
-                <input
-                  value={meetingTask}
-                  onChange={(event) => setMeetingTask(event.target.value)}
-                  className="im-input min-w-0 flex-1"
-                  placeholder="Create task from this meeting"
-                />
-                <button type="submit" className="im-btn im-btn-primary shrink-0 px-4" title="Create task">
-                  <Send className="h-4 w-4" />
-                </button>
-              </form>
-              {createdTasks.length > 0 && (
-                <div className="mt-3 space-y-2">
-                  {createdTasks.map((task, index) => (
-                    <div key={`${task}-${index}`} className="rounded-xl border border-[--color-border] bg-[--color-surface-2] px-3 py-2 text-xs font-semibold text-[--color-foreground]">
-                      {task}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-
-            <section className="im-card p-5">
-              <div className="mb-3 flex items-center gap-2">
-                <WandSparkles className="h-5 w-5 text-[--color-secondary]" />
-                <h3 className="font-bold text-[--color-foreground]">AI Report Generator</h3>
-              </div>
-              <textarea
-                value={transcriptDraft}
-                onChange={(event) => setTranscriptDraft(event.target.value)}
-                rows={4}
-                className="im-input resize-none"
-                placeholder="Paste transcript or meeting notes"
-              />
-              <button
-                type="button"
-                onClick={() => void handleGenerateAIReport()}
-                disabled={isGeneratingReport}
-                className="im-btn im-btn-secondary mt-3 w-full"
-              >
-                {isGeneratingReport ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                Generate summary
+              <button type="submit" className="im-btn im-btn-primary shrink-0 px-4" title="Create task">
+                <Send className="h-4 w-4" />
               </button>
-              {aiReport && (
-                <div className="mt-4 space-y-3 rounded-xl border border-[--color-border] bg-[--color-surface-2] p-3 text-xs">
-                  <p className="font-bold text-[--color-foreground]">{aiReport.summary}</p>
-                  <div className="flex flex-wrap gap-2">
-                    <span className="im-badge im-badge-green">85%+ confidence</span>
-                    <span className="im-badge im-badge-purple capitalize">
-                      {aiReport.sentiment?.overall || 'neutral'} tone
-                    </span>
+            </form>
+            {createdTasks.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {createdTasks.map((task, index) => (
+                  <div key={`${task}-${index}`} className="rounded-xl border border-[--color-border] bg-[--color-surface-2] px-3 py-2 text-xs font-semibold text-[--color-foreground]">
+                    {task}
                   </div>
-                  <div className="flex gap-2">
-                    <button type="button" onClick={exportReportAsPdfText} className="im-btn im-btn-outline im-btn-sm flex-1">
-                      <FileText className="h-3.5 w-3.5" />
-                      PDF/Text
-                    </button>
-                    <button type="button" onClick={exportReportAsCsv} className="im-btn im-btn-outline im-btn-sm flex-1">
-                      <Download className="h-3.5 w-3.5" />
-                      CSV
-                    </button>
-                  </div>
-                </div>
-              )}
-            </section>
-          </div>
+                ))}
+              </div>
+            )}
+          </section>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="im-card p-5">
-              <div className="mb-3 flex items-center gap-2">
-                <Sparkles className="h-4.5 w-4.5 text-[--color-primary]" />
-                <h3 className="font-bold text-[--color-foreground] text-sm">AI Meeting Intelligence</h3>
-              </div>
-              <p className="text-xs leading-relaxed text-[--color-text-secondary]">
-                Transcription and summaries are generated dynamically. Action items are automatically extracted with assignees, priorities, and deadlines.
-              </p>
-              <div className="mt-4 rounded-xl bg-[--color-surface-2] border border-[--color-border] p-3 text-xs">
-                <p className="font-bold text-[--color-foreground]">Action pattern matching</p>
-                <p className="mt-1 text-[--color-text-muted] leading-relaxed">
-                  "Nand will complete frontend by Friday" becomes a task assigned to Nand with a Friday deadline.
-                </p>
-              </div>
+          <div className="im-card p-5">
+            <div className="mb-3 flex items-center gap-2">
+              <ClipboardList className="h-4.5 w-4.5 text-[--color-secondary]" />
+              <h3 className="font-bold text-[--color-foreground] text-sm">Meeting Details</h3>
             </div>
-            <div className="im-card p-5">
-              <div className="mb-3 flex items-center gap-2">
-                <ClipboardList className="h-4.5 w-4.5 text-[--color-secondary]" />
-                <h3 className="font-bold text-[--color-foreground] text-sm">Meeting Details</h3>
+            <dl className="space-y-2.5 text-xs">
+              <div className="flex justify-between gap-4">
+                <dt className="text-[--color-text-muted]">Scheduled</dt>
+                <dd className="font-semibold text-[--color-foreground]">
+                  {currentMeeting?.scheduledAt ? formatDateTime(currentMeeting.scheduledAt) : 'Instant'}
+                </dd>
               </div>
-              <dl className="space-y-2.5 text-xs">
-                <div className="flex justify-between gap-4">
-                  <dt className="text-[--color-text-muted]">Scheduled</dt>
-                  <dd className="font-semibold text-[--color-foreground]">
-                    {currentMeeting?.scheduledAt ? formatDateTime(currentMeeting.scheduledAt) : 'Instant'}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <dt className="text-[--color-text-muted]">Status</dt>
-                  <dd className="font-semibold text-[--color-foreground] capitalize">
-                    {currentMeeting?.status || 'ongoing'}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <dt className="text-[--color-text-muted]">Recording</dt>
-                  <dd className="font-semibold text-[--color-foreground]">
-                    {isRecording ? 'Active' : recordingUrl ? 'Ready to download' : 'Off'}
-                  </dd>
-                </div>
-              </dl>
-            </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-[--color-text-muted]">Status</dt>
+                <dd className="font-semibold text-[--color-foreground] capitalize">
+                  {currentMeeting?.status || 'ongoing'}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-[--color-text-muted]">Recording</dt>
+                <dd className="font-semibold text-[--color-foreground]">
+                  {isRecording ? 'Active' : recordingUrl ? 'Ready to download' : 'Off'}
+                </dd>
+              </div>
+            </dl>
           </div>
         </section>
 
@@ -1592,13 +1496,6 @@ export default function MeetingRoom() {
                 checked={Boolean(meetingSettings.waitingRoom || liveSettings.waitingRoom)}
                 disabled={!isHost}
                 onChange={(checked) => updateLiveSetting('waitingRoom', checked)}
-              />
-              <ToggleLine
-                icon={ShieldCheck}
-                label="E2EE toggle"
-                checked={Boolean(meetingSettings.endToEndEncryption || liveSettings.endToEndEncryption)}
-                disabled={!isHost}
-                onChange={(checked) => updateLiveSetting('endToEndEncryption', checked)}
               />
             </div>
             <a

@@ -69,13 +69,13 @@ export default function ChatPanel({
 
     // Always join the conversation socket room so message:new events are received
     // conversationKey covers 'global', specific roomIds, or teamIds
-    socketService.joinChat(roomId ?? conversationKey, teamId);
+    socketService.joinChat(roomId ?? (meetingId || teamId ? undefined : conversationKey), teamId, meetingId);
 
     return () => {
       socketService.off('message:new', handleNewMessage);
       socketService.off('chat:typing', handleTyping);
       socketService.off('chat:stop-typing', handleStopTyping);
-      socketService.leaveChat(roomId ?? conversationKey, teamId);
+      socketService.leaveChat(roomId ?? (meetingId || teamId ? undefined : conversationKey), teamId, meetingId);
       clearMessages();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -171,7 +171,7 @@ export default function ChatPanel({
                   <div
                     className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
                       isMine
-                        ? 'rounded-tr-sm bg-[--color-primary] text-white'
+                        ? 'rounded-tr-sm bg-primary text-white'
                         : 'rounded-tl-sm bg-[--color-surface-2] text-[--color-foreground] border border-[--color-border]'
                     }`}
                   >
@@ -213,7 +213,7 @@ export default function ChatPanel({
       {/* Footer */}
       <div className="border-t border-[--color-border] bg-[--color-surface-2] px-4 py-3">
         {typingText && (
-          <p className="mb-2 text-xs font-semibold text-[--color-primary] animate-pulse">
+          <p className="mb-2 text-xs font-semibold text-primary animate-pulse">
             {typingText} is typing…
           </p>
         )}
@@ -252,7 +252,7 @@ export default function ChatPanel({
             type="submit"
             id="btn-send-message"
             disabled={!draft.trim()}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[--color-primary] text-white transition hover:bg-[--color-primary-hover] disabled:opacity-40"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-white transition hover:bg-primary-hover disabled:opacity-40"
             title="Send message (Enter)"
           >
             <Send className="h-4 w-4" />

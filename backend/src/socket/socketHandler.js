@@ -166,7 +166,7 @@ const initializeSocket = (io) => {
       }
     });
 
-    socket.on('chat:join', ({ roomId, teamId }) => {
+    socket.on('chat:join', ({ roomId, teamId, meetingId }) => {
       if (roomId) {
         socket.join(roomId);
         logger.debug(`Socket ${socket.id} joined chat room ${roomId}`);
@@ -175,9 +175,13 @@ const initializeSocket = (io) => {
         socket.join(`team:${teamId}`);
         logger.debug(`Socket ${socket.id} joined team chat ${teamId}`);
       }
+      if (meetingId) {
+        socket.join(`meeting:${meetingId}`);
+        logger.debug(`Socket ${socket.id} joined meeting chat ${meetingId}`);
+      }
     });
 
-    socket.on('chat:leave', ({ roomId, teamId }) => {
+    socket.on('chat:leave', ({ roomId, teamId, meetingId }) => {
       if (roomId) {
         socket.leave(roomId);
         logger.debug(`Socket ${socket.id} left chat room ${roomId}`);
@@ -185,6 +189,10 @@ const initializeSocket = (io) => {
       if (teamId) {
         socket.leave(`team:${teamId}`);
         logger.debug(`Socket ${socket.id} left team chat ${teamId}`);
+      }
+      if (meetingId) {
+        socket.leave(`meeting:${meetingId}`);
+        logger.debug(`Socket ${socket.id} left meeting chat ${meetingId}`);
       }
     });
 
